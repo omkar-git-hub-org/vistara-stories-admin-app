@@ -1,0 +1,36 @@
+name: vistara_stories
+description: "A beautiful and premium photo gallery app powered by AWS."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management (Riverpod)
+  flutter_riverpod: ^2.5.1
+
+  # Network & API Calls
+  http: ^1.2.0
+
+  # Professional UI Packages
+  shimmer: ^3.0.0          # Smooth skeleton loading effect ke liye
+  google_fonts: ^6.1.0     # Premium typography aur fonts ke liye
+  
+  # Image Picker (Upload feature ke liye)
+  image_picker: ^1.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  # Agar aapke paas koi custom local assets/images hain toh unhe yahan niche uncomment karke add kar sakte hain.
+  # assets:
+  #   - assets/images/
