@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../aws_service.dart';
 
-// Event state models ko track karne ke liye state class
 class EventState {
   final List<Map<String, dynamic>> events;
   final bool isLoading;
@@ -26,10 +25,9 @@ class EventState {
   }
 }
 
-// StateNotifier jo actual fetch logic handle karega
 class EventNotifier extends StateNotifier<EventState> {
   EventNotifier() : super(EventState()) {
-    getEvents(); // Initialize hote hi automatic fetch karega
+    getEvents();
   }
 
   Future<void> getEvents() async {
@@ -40,13 +38,22 @@ class EventNotifier extends StateNotifier<EventState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false, 
-        errorMessage: "Kuch gadbad ho gayi: $e"
+        errorMessage: "Error: $e"
       );
     }
   }
+
+  // Delete Action Handling
+  Future<bool> deleteEvent(String eventId) async {
+    final success = await AWSService.deleteEvent(eventId);
+    if (success) {
+      final updatedList = state.events.where((e) => e['eventId'] != eventId).toList();
+      state = state.copyWith(events: updatedList);
+    }
+    return success;
+  }
 }
 
-// Global provider jise hum UI me watch karenge
 final eventProvider = StateNotifierProvider<EventNotifier, EventState>((ref) {
   return EventNotifier();
 });
