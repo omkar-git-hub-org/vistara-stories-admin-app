@@ -5,11 +5,26 @@ import 'package:vistara_stories/upload_screen.dart';
 import '../providers/event_provider.dart';
 import 'event_detail_screen.dart';
 
-class GalleryScreen extends ConsumerWidget {
+class GalleryScreen extends ConsumerStatefulWidget {
   const GalleryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<GalleryScreen> createState() => _GalleryScreenState();
+}
+
+class _GalleryScreenState extends ConsumerState<GalleryScreen> {
+  int _selectedTab = 0; // 0: Events, 1: Hero Banner, 2: Photographer Photo
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      ref.read(eventProvider.notifier).getEvents();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final eventState = ref.watch(eventProvider);
 
     return Scaffold(
@@ -28,30 +43,88 @@ class GalleryScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: _buildBody(context, ref, eventState),
-
-      // ➕ Floating Button to Open Upload Screen
+      body: Column(
+        children: [
+          const SizedBox(height: 12),
+          _buildToggleBar(),
+          const SizedBox(height: 8),
+          Expanded(
+            child: _buildBody(context, ref, eventState),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: Colors.amberAccent,
         foregroundColor: Colors.black,
         elevation: 4,
-        onPressed: () {
-          Navigator.push(
+        onPressed: () async {
+          await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => const UploadScreen(),
             ),
           );
+          ref.read(eventProvider.notifier).getEvents();
         },
         icon: const Icon(Icons.add_a_photo, size: 22),
         label: const Text(
-          'New Event',
+          'New Upload',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
       ),
     );
   }
 
+  // 🎛️ TOGGLE BAR WIDGET
+  Widget _buildToggleBar() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161622),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          _toggleButton(0, 'Events'),
+          _toggleButton(1, 'Hero Banner'),
+          _toggleButton(2, 'Photographer'),
+        ],
+      ),
+    );
+  }
+
+  Widget _toggleButton(int index, String title) {
+    final isSelected = _selectedTab == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _selectedTab = index;
+          });
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.amberAccent : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: isSelected ? Colors.black : Colors.grey,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 📱 BODY BUILDER WITH FIXED FILTERING
   Widget _buildBody(BuildContext context, WidgetRef ref, EventState state) {
     if (state.isLoading) {
       return _buildShimmerLoading();
@@ -70,27 +143,50 @@ class GalleryScreen extends ConsumerWidget {
       );
     }
 
-    if (state.events.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.photo_library_outlined, size: 80, color: Colors.white.withOpacity(0.3)),
-            const SizedBox(height: 16),
-            const Text(
-              'No events uploaded yet',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.grey),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Tap "+ New Event" to create your first story',
-              style: TextStyle(fontSize: 13, color: Colors.amberAccent),
-            ),
-          ],
-        ),
-      );
+    // Tab 0: Pure Event Portfolio (Excludes Hero & Photographer items)
+    if (_selectedTab == 0) {
+      final eventsList = state.events.where((e) {
+        final type = (e['type'] ?? '').toString().toLowerCase();
+        final id = (e['eventId'] ?? '').toString().toLowerCase();
+        
+        return type != 'website' &&
+            type != 'hero' &&
+            type != 'photographer' &&
+            !id.startsWith('hero-') &&
+            !id.startsWith('photographer-') &&
+            id != 'hero_banner' &&
+            id != 'website-assets';
+      }).toList();
+
+      if (eventsList.isEmpty) return _buildEmptyState('No event portfolios uploaded yet');
+      return _buildEventGrid(eventsList);
     }
 
+    // Tab 1: Hero Banner
+    if (_selectedTab == 1) {
+      final heroEvents = state.events.where((e) {
+        final type = (e['type'] ?? '').toString().toLowerCase();
+        final id = (e['eventId'] ?? '').toString().toLowerCase();
+        return type == 'hero' || id.startsWith('hero-') || id == 'hero_banner';
+      }).toList();
+
+      if (heroEvents.isEmpty) return _buildEmptyState('No Hero Banners uploaded yet');
+      return _buildHeroGrid(heroEvents);
+    }
+
+    // Tab 2: Photographer Profile Photos
+    final photographerEvents = state.events.where((e) {
+      final type = (e['type'] ?? '').toString().toLowerCase();
+      final id = (e['eventId'] ?? '').toString().toLowerCase();
+      return type == 'website' || type == 'photographer' || id.startsWith('photographer-') || id == 'website-assets';
+    }).toList();
+
+    if (photographerEvents.isEmpty) return _buildEmptyState('No Photographer profile photos uploaded yet');
+    return _buildPhotographerGrid(photographerEvents);
+  }
+
+  // 1️⃣ EVENT PORTFOLIO GRID
+  Widget _buildEventGrid(List<Map<String, dynamic>> events) {
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: GridView.builder(
@@ -100,9 +196,9 @@ class GalleryScreen extends ConsumerWidget {
           mainAxisSpacing: 12,
           childAspectRatio: 0.8,
         ),
-        itemCount: state.events.length,
+        itemCount: events.length,
         itemBuilder: (context, index) {
-          final event = state.events[index];
+          final event = events[index];
           final String eventId = event['eventId'] ?? 'Event';
           final String coverUrl = event['coverPhoto'] ?? '';
           final String eventType = event['type'] ?? 'General';
@@ -138,43 +234,29 @@ class GalleryScreen extends ConsumerWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // Cover Image
-                    Hero(
-                      tag: 'cover-$eventId',
-                      child: Image.network(
-                        coverUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: Colors.grey[900],
-                            child: const Icon(Icons.broken_image, color: Colors.grey),
-                          );
-                        },
+                    Image.network(
+                      coverUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        color: Colors.grey[900],
+                        child: const Icon(Icons.broken_image, color: Colors.grey),
                       ),
                     ),
-
-                    // 🗑️ Delete Button Top Right
                     Positioned(
                       top: 8,
                       right: 8,
                       child: GestureDetector(
-                        onTap: () => _showDeleteConfirmation(context, ref, eventId),
+                        onTap: () => _showDeleteConfirmation(context, ref, eventId, 'event'),
                         child: Container(
                           padding: const EdgeInsets.all(6),
                           decoration: const BoxDecoration(
                             color: Colors.black54,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.redAccent,
-                            size: 20,
-                          ),
+                          child: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
                         ),
                       ),
                     ),
-
-                    // Bottom Overlay Info
                     Positioned(
                       bottom: 0,
                       left: 0,
@@ -185,17 +267,13 @@ class GalleryScreen extends ConsumerWidget {
                           gradient: LinearGradient(
                             begin: Alignment.bottomCenter,
                             end: Alignment.topCenter,
-                            colors: [
-                              Colors.black.withOpacity(0.9),
-                              Colors.transparent,
-                            ],
+                            colors: [Colors.black.withOpacity(0.9), Colors.transparent],
                           ),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Event Type Badge
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
@@ -204,11 +282,7 @@ class GalleryScreen extends ConsumerWidget {
                               ),
                               child: Text(
                                 eventType.toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.amberAccent,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: const TextStyle(color: Colors.amberAccent, fontSize: 9, fontWeight: FontWeight.bold),
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -216,19 +290,11 @@ class GalleryScreen extends ConsumerWidget {
                               eventId.toUpperCase().replaceAll('-', ' '),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: Colors.white,
-                              ),
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
                             ),
-                            const SizedBox(height: 2),
                             Text(
                               '${photos.length} Photos',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.white70,
-                              ),
+                              style: const TextStyle(fontSize: 11, color: Colors.white70),
                             ),
                           ],
                         ),
@@ -244,16 +310,118 @@ class GalleryScreen extends ConsumerWidget {
     );
   }
 
-  // Delete Confirmation Dialog
-  void _showDeleteConfirmation(BuildContext context, WidgetRef ref, String eventId) {
+  // 2️⃣ HERO BANNER GRID
+  Widget _buildHeroGrid(List<Map<String, dynamic>> items) {
+    return Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: ListView.builder(
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final item = items[index];
+          final String heroUrl = item['coverPhoto'] ?? item['heroUrl'] ?? (item['photos'] != null && item['photos'].isNotEmpty ? item['photos'][0] : '');
+          final String id = item['eventId'] ?? 'hero_banner';
+
+          return Container(
+            height: 180,
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              color: const Color(0xFF1E1E2C),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    heroUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stack) => const Icon(Icons.broken_image, color: Colors.grey),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: GestureDetector(
+                      onTap: () => _showDeleteConfirmation(context, ref, id, 'Hero Banner'),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle),
+                        child: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 22),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // 3️⃣ PHOTOGRAPHER PHOTO GRID
+  Widget _buildPhotographerGrid(List<Map<String, dynamic>> items) {
+    return Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: GridView.builder(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.85,
+        ),
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final item = items[index];
+          final String photoUrl = item['coverPhoto'] ?? (item['photos'] != null && item['photos'].isNotEmpty ? item['photos'][0] : '');
+          final String id = item['eventId'] ?? 'photographer';
+
+          return Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              color: const Color(0xFF1E1E2C),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    photoUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stack) => const Icon(Icons.broken_image, color: Colors.grey),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: GestureDetector(
+                      onTap: () => _showDeleteConfirmation(context, ref, id, 'Photographer Photo'),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle),
+                        child: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // 🗑️ DELETE CONFIRMATION DIALOG (FIXED UNIFIED DELETE LOGIC)
+  void _showDeleteConfirmation(BuildContext context, WidgetRef ref, String eventId, String typeTitle) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E2C),
-        title: const Text('Delete Event?', style: TextStyle(color: Colors.white)),
-        content: Text(
-          'Are you sure you want to delete "$eventId"? This cannot be undone.',
-          style: const TextStyle(color: Colors.grey),
+        title: Text('Delete $typeTitle?', style: const TextStyle(color: Colors.white)),
+        content: const Text(
+          'Are you sure you want to delete this item? This action cannot be undone.',
+          style: TextStyle(color: Colors.grey),
         ),
         actions: [
           TextButton(
@@ -264,13 +432,17 @@ class GalleryScreen extends ConsumerWidget {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () async {
               Navigator.pop(ctx);
-              final success = await ref.read(eventProvider.notifier).deleteEvent(eventId);
+
+              // Standard Direct Delete using eventId
+              bool success = await ref.read(eventProvider.notifier).deleteEvent(eventId);
+
+              // Auto-refresh state
+              await ref.read(eventProvider.notifier).getEvents();
+
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(
-                      success ? "Event '$eventId' deleted!" : "Failed to delete event.",
-                    ),
+                    content: Text(success ? "Deleted successfully! 🎉" : "Failed to delete."),
                     backgroundColor: success ? Colors.green : Colors.red,
                   ),
                 );
@@ -278,6 +450,19 @@ class GalleryScreen extends ConsumerWidget {
             },
             child: const Text('Delete', style: TextStyle(color: Colors.white)),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(String message) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.photo_library_outlined, size: 70, color: Colors.white.withOpacity(0.3)),
+          const SizedBox(height: 16),
+          Text(message, style: const TextStyle(fontSize: 15, color: Colors.grey)),
         ],
       ),
     );
